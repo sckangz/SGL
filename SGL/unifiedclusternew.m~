@@ -1,0 +1,69 @@
+
+function [result,svalue]=unifiedclusternew(K,A,s,alpha,beta)
+% s is the true class label.
+[~,n]=size(K);
+[~,m]=size(A);
+Z=ones(n,m)/m;
+c=length(unique(s));
+W=zeros(n,m);
+svalue=[];
+options = optimset( 'Algorithm','interior-point-convex','Display','off');
+%fprintf('iter:%d\n',m);
+for i=1:100
+    Zold=Z;
+    %tmp=mat2cell(S,[n,m],[n,m]);
+    %tmp{1,2}=Z;
+    %tmp{2,1}=Z';
+    %S=cell2mat(tmp);
+    D1=(sum(Z')).^(-1/2);
+    
+    
+    D2=(sum(Z)).^(-1/2);
+    
+    D=[D1,D2];
+    
+    %D = diag((sum(S)).^(-1/2));
+    %L = eye(n+m)-(D)*S*(D);
+    [~,U,V,~,~,~,]=svd2uv(Z, c);%o(m3+2mn)
+    F=[U;V];
+    %svalue(i)=(norm(K-A*Z','fro'))^2+alpha*(norm(Z,'fro')^2)+beta*trace(F'*(eye(n+m)-diag(D)*S*diag(D))*F);
+   for ij=1:n
+        for ji=1:m
+            W(ij,ji)=(norm((F(ij,:)*D(ij)-F(n+ji,:)*D(n+ji)),'fro'))^2;
+            %W(ij,ji)=(norm(F(ij,:)*D(ij,ij)-F(ji,:)*D(n+ji,n+ji)))^2;
+        end
+   end
+   H=2*alpha*eye(m)+2*A'*A;
+   H=(H+H')/2;
+   parfor ij=1:n
+        %for ji=1:m
+            %W(ij,ji)=(norm(F(ij,:)*D(ij)-F(ji,:)*D(n+ji)))^2;
+            %W(ij,ji)=(norm(F(ij,:)*D(ij,ij)-F(ji,:)*D(n+ji,n+ji)))^2;
+        %end
+        
+        %H=2*alpha*eye(m)+2*A'*A;
+        %H=(H+H')/2;
+        
+        ff=beta*W(ij,:)-2*(K(:,ij))'*A;
+% we use the free package to solve quadratic equation: http://sigpromu.org/quadprog/index.html
+        %[Z(:,ij),err,lm] = qpas(H,ff,[],[],ones(1,n),1,zeros(n,1),ones(n,1));
+        Z(ij,:)=quadprog(H,ff',[],[],ones(1,m),1,zeros(m,1),ones(m,1),Z(ij,:),options);
+   end%o(nm3)
+    
+    if i>5 &((norm(Z-Zold)/norm(Zold))<1e-3)
+        break
+    end
+%    if ((norm(Z-Zold)/norm(Zold))<1e-3)
+%          break
+%      end
+%     tmp=mat2cell(S,[n,m],[n,m]);
+%     tmp{1,2}=Z;
+%     tmp{2,1}=Z';
+%     S=cell2mat(tmp);
+    %svalue(i)=(norm(K-A*Z','fro'))^2+alpha*(norm(Z,'fro')^2)+beta*trace(F'*(eye(n+m)-diag(D)*S*diag(D))*F);
+end
+%actual_ids= kmeans(U, c, 'emptyaction', 'singleton', 'replicates', 100, 'display', 'off');
+ rng(5489,'twister');
+actual_ids= litekmeans(U,c,'MaxIter', 100,'Replicates',100);
+%o()
+[result] = ClusteringMeasure( actual_ids,s);

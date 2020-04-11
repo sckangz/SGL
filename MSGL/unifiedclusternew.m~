@@ -1,0 +1,85 @@
+
+function [result]=unifiedclusternew(K,A,s,alpha,beta,gamma,nv)
+% s is the true class label.
+[~,n]=size(K{1});
+[~,m]=size(A{1});
+Z=ones(n,m)/m;
+
+S=sparse(n+m,n+m);
+c=length(unique(s));
+W=zeros(n,m);
+for i=1:nv
+    av(i)=1;
+end
+options = optimset( 'Algorithm','interior-point-convex','Display','off');
+%fprintf('iter:%d\n',m);
+for i=1:30
+    Zold=Z;
+    D1=(sum(Z')).^(-1/2);
+    D2=(sum(Z)).^(-1/2);
+    D=[D1,D2];
+    [~,U,V,~,~,~,]=svd2uv(Z, c);%o(m3+2mn)
+    F=[U;V];
+   for ij=1:n
+        for ji=1:m
+            
+            W(ij,ji)=(norm(((F(ij,:)*D(ij)-F(n+ji,:)*D(n+ji))),'fro'))^2;
+            %W(ij,ji)=(norm(F(ij,:)*D(ij,ij)-F(ji,:)*D(n+ji,n+ji)))^2;
+        end
+   end
+   
+   tmp=av(1)*(A{1})'*(A{1});
+   
+   for ii=2:nv
+        tmp=tmp+av(ii)*(A{ii})'*(A{ii});
+   end
+   
+   H=2*alpha*eye(m)+2*tmp;
+   H=(H+H')/2;
+   tmp1={};
+   for ii=1:n
+       
+       tmp1{ii}=av(1)*(K{1}(:,ii))'*A{1};
+       for tmp2=2:nv
+       tmp1{ii}=tmp1{ii}+av(tmp2)*(K{tmp2}(:,ii))'*A{tmp2};
+       end
+   end
+   parfor ij=1:n
+        %for ji=1:m
+            %W(ij,ji)=(norm(F(ij,:)*D(ij)-F(ji,:)*D(n+ji)))^2;
+            %W(ij,ji)=(norm(F(ij,:)*D(ij,ij)-F(ji,:)*D(n+ji,n+ji)))^2;
+        %end
+        
+        %H=2*alpha*eye(m)+2*A'*A;
+        %H=(H+H')/2;
+        
+        ff=beta*W(ij,:)-2*tmp1{ij};
+% we use the free package to solve quadratic equation: http://sigpromu.org/quadprog/index.html
+        %[Z(:,ij),err,lm] = qpas(H,ff,[],[],ones(1,n),1,zeros(n,1),ones(n,1));
+        Z(ij,:)=quadprog(H,ff',[],[],ones(1,m),1,zeros(m,1),ones(m,1),Z(ij,:),options);
+   end%o(nm3)
+    %fprintf('iter:%d\n',i);
+   for ii=1:nv
+       av(ii)=(-((norm((K{ii}-A{ii}*Z'),'fro')^2))/gamma)^(1/(gamma-1));
+   end
+    if i>5 &((norm(Z-Zold,'fro')/norm(Zold,'fro'))<1e-3)
+        break
+    end
+    
+%     tmp=mat2cell(S,[n,m],[n,m]);
+%     tmp{1,2}=Z;
+%     tmp{2,1}=Z';
+%     S=cell2mat(tmp);
+%     term1=0;term4=0;
+%     for ii=1:nv
+%         term1=term1+av(ii)*(norm((K{ii}-A{ii}*Z'),'fro')^2);
+%         term4=0+(av(ii))^gamma;
+%     end
+%     
+%     svalue(i)=term1+alpha*(norm(Z,'fro')^2)+beta*sum(sum(Z.*W))+term4
+end
+%actual_ids= kmeans(U, c, 'emptyaction', 'singleton', 'replicates', 100, 'display', 'off');
+ rng(5489,'twister');
+actual_ids= litekmeans(U,c,'MaxIter', 100,'Replicates',100);
+%o()
+[result] = ClusteringMeasure( actual_ids,s);
